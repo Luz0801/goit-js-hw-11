@@ -1,147 +1,74 @@
-// Imports: SimpleLightbox, Notiflix & Axios
-
+import './sass/main.scss';
+import { Notify } from 'notiflix';
 import SimpleLightbox from 'simplelightbox';
 import 'simplelightbox/dist/simple-lightbox.min.css';
-import Notiflix from 'notiflix';
+import refs from './js/refs';
+import createCollection from './js/createCollection';
+import apiService from './js/apiService'; 
+import { scroll } from './js/scroll'; 
 
-import { fadeEffect } from './js/preloader';
-import { fetchImages } from './js/fetchImages';
 
-// HTML elements
+let query = ''
+let page = 1
+let simpleLightBox = new SimpleLightbox('.gallery a')
+const perPage = 40
 
-const searchQuery = document.querySelector('input[name="searchQuery"]');
-const closeBtn = document.querySelector('.close-btn');
-const searchForm = document.querySelector('#search-form');
-const gallery = document.querySelector('.gallery');
-const loadBtn = document.querySelector('.load-more');
+refs.searchForm.addEventListener('submit', onSearchForm)
+refs.btnLoad.addEventListener('click', onBtnLoad)
+//simpleLightBox = new Simplelightbox('.gallery a')
 
-// Needed to query the Pixabay API
-let perPage = 40;
-let page = 0;
-let name = searchQuery.value;
+function onSearchForm(event) {
+  event.preventDefault()
 
-// Needed to hide "load more" and "close" buttons
+  page = 1
+  query = event.currentTarget.searchQuery.value.trim()
+  refs.gallery.innerHTML = ''
+  refs.btnLoad.classList.add('is-hidden')
+  
+  if (!query) {
+    Notify.failure('The search string cannot be empty. Please specify your search query.')
+    return
+  }
 
-loadBtn.style.display = 'none';
-closeBtn.style.display = 'none';
-
-// Handling the "submit" button event
-
-async function eventHandler(e) {
-  e.preventDefault();
-  gallery.innerHTML = '';
-  loadBtn.style.display = 'none';
-
-  page = 1;
-  name = searchQuery.value;
-
-  fetchImages(name, page, perPage)
-    .then(name => {
-      let totalPages = name.totalHits / perPage;
-
-      if (name.hits.length > 0) {
-        Notiflix.Notify.success(`Hooray! We found ${name.totalHits} images.`);
-        renderGallery(name);
-        new SimpleLightbox('.gallery a');
-        closeBtn.style.display = 'block';
-        closeBtn.addEventListener('click', () => {
-          gallery.innerHTML = '';
-          closeBtn.style.display = 'none';
-        });
-
-        if (page < totalPages) {
-          loadBtn.style.display = 'block';
-        } else {
-          loadBtn.style.display = 'none';
-          Notiflix.Notify.info(
-            "We're sorry, but you've reached the end of search results."
-          );
-        }
+  apiService(query, page, perPage)
+    .then(({ data }) => {
+      if (data.totalHits === 0) {
+        Notify.failure('Sorry, there are no images matching your search query. Please try again.')
       } else {
-        Notiflix.Notify.failure(
-          'Sorry, there are no images matching your search query. Please try again.'
-        );
-        gallery.innerHTML = '';
+        createCollection(data.hits)
+        //simpleLightBox = new SimpleLightbox('.gallery a').refresh()
+        simpleLightBox.refresh()
+        Notify.success(`Hooray! We found ${data.totalHits} images.`)
+
+        if (data.totalHits > perPage) {
+          refs.btnLoad.classList.remove('is-hidden')
+        }
       }
     })
-    .catch(error => console.log('ERROR: ' + error));
+    
+    .catch(error => console.log(error))
+  
 }
 
-searchForm.addEventListener('submit', eventHandler);
+function onBtnLoad() {
+  page += 1
+  //simpleLightBox.destroy()
 
-// Function for markup for HTML gallery element
+  apiService(query, page, perPage)
+    .then(({ data }) => {
+      createCollection(data.hits)
+      //simpleLightBox = new SimpleLightbox('.gallery a')
+      simpleLightBox.refresh()
 
-function renderGallery(name) {
-  const markup = name.hits
-    .map(hit => {
-      return `<div class="photo-card">
-
-        <a class="gallery-item" href="${hit.largeImageURL}">
-          <img
-            class="gallery__image"
-            src="${hit.webformatURL}"
-            alt="${hit.tags}"
-            loading="lazy"
-        /></a>
-
-        <div class="info">
-          <div class="info__box">
-            <p class="info-item">
-              <b class="material-symbols-outlined">thumb_up</b>
-            </p>
-            <p class="info-counter">${hit.likes.toLocaleString()}</p>
-          </div>
-
-          <div class="info__box">
-            <p class="info-item">
-              <b class="material-symbols-outlined">visibility</b>
-            </p>
-            <p class="info-counter">${hit.views.toLocaleString()}</p>
-          </div>
-
-          <div class="info__box">
-            <p class="info-item">
-              <b class="material-symbols-outlined">forum</b>
-            </p>
-            <p class="info-counter">${hit.comments.toLocaleString()}</p>
-          </div>
-
-          <div class="info__box">
-            <p class="info-item">
-              <b class="material-symbols-outlined">download</b>
-            </p>
-            <p class="info-counter">${hit.downloads.toLocaleString()}</p>
-          </div>
-
-        </div>
-      </div>`;
-    })
-    .join('');
-  gallery.insertAdjacentHTML('beforeend', markup);
-}
-
-// Load more button - function
-
-loadBtn.addEventListener(
-  'click',
-  () => {
-    name = searchQuery.value;
-    page += 1;
-    fetchImages(name, page, perPage).then(name => {
-      let totalPages = name.totalHits / perPage;
-      renderGallery(name);
-      new SimpleLightbox('.gallery a');
-      if (page >= totalPages) {
-        loadBtn.style.display = 'none';
-        Notiflix.Notify.info(
-          "We're sorry, but you've reached the end of search results."
-        );
+      const totalPages = Math.floor(data.totalHits / perPage)
+      if (page > totalPages) {
+        refs.btnLoad.classList.add('is-hidden') 
+        Notify.failure("We're sorry, but you've reached the end of search results.")
       }
-    });
-  },
-  true
-);
+      scroll()
+    })
+    .catch(error => console.log(error))
+} 
 
-// Preloader
 
-window.addEventListener('load', fadeEffect);
+
